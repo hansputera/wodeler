@@ -7,6 +7,7 @@ const { Odesus } = require('odesus');
 const { generateKey, useSafeMultiAuthState } = require('safe-usemultiauthstate');
 const { prefixes, limits, otakudesuUrl } = require('./config.js');
 const resolveDesuUrl = require('./resolve-desu-url.js');
+const resolveBufferStream = require('./resolve-buffer-stream.js');
 
 /**
  * @param {string} text Text want to parse
@@ -107,6 +108,40 @@ async function create_socket(sock)
                     image: {
                         url: anime.image,
                     },
+                }, { quoted: msg });
+
+            case 'd':
+            case 'download':
+            case 'dl':
+                const dl_url = parses.args.at(0);
+                if (!dl_url) return;
+
+                const slug_dl = await resolveDesuUrl(dl_url);
+                if (slug_dl?.type !== 'episode') return;
+
+                const episode = await ods.getEpisode(slug_dl);
+                if (!episode) return;
+
+
+                const downloadText = episode.downloads.map(
+                    x => `* ${x.resolution.toUpperCase()} - ${x.size}\n${x.urls.map(
+                        (u, i) => `     ${i + 1}. ${u.url} (${u.source})`
+                    ).join('\n')}`
+                ).join('\n\n');
+
+                await sock.sendMessage(msg.key.remoteJid, {
+                    caption: `*${episode.title}*\n\n*Link:*\n${episode.url}`,
+                    document: Buffer.from(downloadText, 'utf-8'),
+                    fileName: 'episodes.txt',
+                    mimetype: 'text/plain',
+                }, { quoted: msg });
+                const stream = await episode.stream();
+                const buffer = await resolveBufferStream(stream).catch(() => null);
+                if (!buffer?.length) return;
+
+                await sock.sendMessage(msg.key.remoteJid, {
+                    video: buffer,
+                    caption: `*${episode.title}*\n\n*Link:*\n${episode.url}`,
                 }, { quoted: msg });
             default:
                 return;
