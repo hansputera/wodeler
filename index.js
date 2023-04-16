@@ -3,9 +3,10 @@ require('dotenv/config');
 const {
     default: makeWASocket, Browsers, DisconnectReason
 } = require('@gampang-pkg/baileys-edge');
-const { Odesus, Util } = require('odesus');
+const { Odesus } = require('odesus');
 const { generateKey, useSafeMultiAuthState } = require('safe-usemultiauthstate');
 const { prefixes, limits, otakudesuUrl } = require('./config.js');
+const resolveDesuUrl = require('./resolve-desu-url.js');
 
 /**
  * @param {string} text Text want to parse
@@ -83,6 +84,29 @@ async function create_socket(sock)
                 }
                 await sock.sendMessage(msg.key.remoteJid, {
                     text: `*Search results for ${query}*\n\n${results.map((r, i) => `${i + 1}. ${r.name} (${r.url})`).join('\n\n')}`,
+                }, { quoted: msg });
+            
+            case 'i':
+            case 'info':
+            case 'infoanime':
+            case 'anime':
+                const url = parses.args.at(0);
+                if (!url) return;
+
+                const slug = await resolveDesuUrl(url);
+                if (slug?.type !== 'anime') return;
+
+                const anime = await ods.getAnimeInfo(slug);
+                if (!anime) return;
+
+                anime.episodes = anime.episodes.filter(x => !/batch/gi.test(x.url));
+                await sock.sendMessage(msg.key.remoteJid, {
+                    text: `*${anime.name}*\n\n${anime.synopsis}\n\n*Genres:*\n${anime.genres.map(x => x.name).join(', ')}\n\n*Status:*\n${anime.status}\n\n*Rating:*\n${anime.rating}\n\n*Episodes:*\n${anime.episodes.slice(0, 5).map(
+                        (e, i) => `     ${i + 1}. ${e.title} (${e.url})`
+                    ).join('\n')}\n\n*Duration:*\n${anime.duration}\n\n*Release:*\n${anime.releasedAt}\n\n*Studio:*\n${anime.studio}\n\n*Link:*\n${anime.url}`,
+                    image: {
+                        url: anime.image,
+                    },
                 }, { quoted: msg });
             default:
                 return;
